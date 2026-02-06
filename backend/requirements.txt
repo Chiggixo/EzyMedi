@@ -8,3 +8,4 @@ requests
 pymongo
 python-dotenv
 wfdb
+gunicorn
