@@ -182,5 +182,5 @@ def get_latest():
 
 if __name__ == '__main__':
     connect_db()
-    # threaded=True solves the lag. port 5001 for local dev.
-    app.run(port=5001, host='0.0.0.0', debug=False, threaded=True)
+    port = int(os.environ.get("PORT", 5001))
+    app.run(host='0.0.0.0', port=port, threaded=True)
