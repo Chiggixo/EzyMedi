@@ -46,7 +46,6 @@ def connect_db():
         print(f"❌ DATABASE CONNECTION ERROR: {e}")
 
 # TRIGGER CONNECTION AT MODULE LEVEL
-# This ensures that when Gunicorn starts the app, the DB is already linked.
 connect_db()
 
 # Load the Random Forest 'Brain'
@@ -85,23 +84,22 @@ def calculate_forecasting(pid):
             return "Learning Baseline Signature..."
 
         new = history[0]
-        old = history[4] # Look back roughly 8-10 seconds
+        old = history[4] 
 
-        # 1. ACUTE FORECASTING: Detect deterioration velocity
         spo2_drop = old.get('spo2_percent', 98) - new.get('spo2_percent', 98)
         bpm_rise = new.get('ecg_bpm', 75) - old.get('ecg_bpm', 75)
 
-        # 2. CHRONIC DECAY DETECTION: Persistent downward trends
+        # Chronic Decay Detection: Persistent downward trends
         spo2_vals = [h.get('spo2_percent', 98) for h in history]
         is_decaying = all(spo2_vals[i] <= spo2_vals[i+1] + 1 for i in range(len(spo2_vals)-1))
 
         if spo2_drop >= 3 and bpm_rise >= 10:
-            return "🔴 CRITICAL: ACUTE CRISIS DETECTED"
+            return "🔴 CRITICAL: DEATH SPIRAL PATTERN DETECTED"
 
         if is_decaying and spo2_vals[0] < 94:
             return "🟠 WARNING: PERSISTENT PHYSIOLOGICAL DECAY"
 
-        if bpm_rise >= 15:
+        if bpm_rise >= 20:
             return "⚠️ ALERT: HIGH HEART RATE VELOCITY"
 
         return "✅ STABLE: NORMAL PHYSIOLOGICAL TRENDS"
@@ -125,7 +123,6 @@ def add_vital():
         vitals_col.insert_one(data)
         return jsonify({"status": "success"}), 201
     except Exception as e:
-        print(f"❌ POST Error: {e}")
         return jsonify({"status": "error", "msg": str(e)}), 500
 
 @app.route('/api/get_latest_vital', methods=['GET'])
@@ -137,37 +134,36 @@ def get_latest():
         return jsonify({"error": "No database connection established"}), 503
 
     try:
-        # Fetch latest record
         latest = vitals_col.find_one({"patient_id": pid}, sort=[('timestamp', DESCENDING)])
         if not latest: return jsonify({"error": "No data found for this patient"}), 404
 
-        # 1. ABP Progress Tracker (Scaled for a 1000-packet learning baseline)
         count = vitals_col.count_documents({"patient_id": pid})
         abp_progress = min(round((count / 1000) * 100, 1), 100.0)
 
-        # 2. Crisis Forecasting status
+        # 1. CRISIS FORECASTING
         forecast_status = calculate_forecasting(pid)
 
-        # 3. AI Prediction (Random Forest Sensor Fusion)
+        # 2. AI PREDICTION
         is_abnormal = 0
         if model:
             input_row = [float(latest.get(f, 0)) for f in FEATURE_NAMES]
             input_df = pd.DataFrame([input_row], columns=FEATURE_NAMES)
             is_abnormal = int(model.predict(input_df)[0])
 
-        # 4. CLINICAL GUARDRAILS (Ensures high specificity and sensitivity)
+        # 3. CLINICAL GUARDRAILS (Synchronizes logic with screenshots)
         hr = latest.get('ecg_bpm', 75)
         spo2 = latest.get('spo2_percent', 98)
         
-        # Rule A: If vitals are objectively healthy, override AI noise (Fixes Patient 001)
+        # Rule A: Healthy Vitals Override (Fixes Patient 001 False Positive)
         if 60 <= hr <= 95 and spo2 >= 96:
             is_abnormal = 0
 
-        # Rule B: If forecasting detects decay or hypoxia, force abnormal (Fixes Patient 003)
-        if spo2 < 93 or "WARNING" in forecast_status or "CRITICAL" in forecast_status:
+        # Rule B: Emergency Sync (Fixes Patient 002/003 Disconnect)
+        # If forecasting sees a crisis or oxygen is low, the AI classification MUST be abnormal
+        if spo2 < 93 or "WARNING" in forecast_status or "CRITICAL" in forecast_status or "ALERT" in forecast_status:
             is_abnormal = 1
 
-        # 5. Build Final Anomaly Report
+        # 4. BUILD FINAL REPORT
         report = {
             "status": "normal" if is_abnormal == 0 else "abnormal",
             "alerts": [],
@@ -175,16 +171,18 @@ def get_latest():
         }
 
         if is_abnormal:
-            if spo2 < 94:
-                report["alerts"].append("ALERT: HYPOXIA DETECTED")
+            if spo2 < 93:
+                report["alerts"].append("CRITICAL: HYPOXIA DETECTED")
+            elif "CRITICAL" in forecast_status:
+                report["alerts"].append("AI: DEATH SPIRAL PREDICTION")
+            elif hr > 140:
+                report["alerts"].append("ALERT: SEVERE TACHYCARDIA")
             else:
                 report["alerts"].append("AI: ANOMALY DETECTED")
 
-        # 6. JSON Preparation & Blockchain Audit Hashing
+        # 5. BLOCKCHAIN AUDIT HASHING
         latest['_id'] = str(latest['_id'])
         latest['timestamp'] = latest['timestamp'].isoformat()
-
-        # SHA-256 integrity log
         hash_input = f"{latest['_id']}-{latest['timestamp']}-{hr}"
         latest['block_hash'] = hashlib.sha256(hash_input.encode()).hexdigest().upper()
 
@@ -195,10 +193,8 @@ def get_latest():
             "mode": "Clinical Validation Node"
         })
     except Exception as e:
-        print(f"❌ GET Error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    # Local development entry point
     port = int(os.environ.get("PORT", 5001))
     app.run(host='0.0.0.0', port=port, threaded=True)
