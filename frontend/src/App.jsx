@@ -57,7 +57,7 @@ const App = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await fetch(`http://127.0.0.1:5001/api/get_latest_vital?patient_id=${patientId}`);
+        const response = await fetch(`https://ezymedi-api.onrender.com/api/get_latest_vital?patient_id=${patientId}`);
         const data = await response.json();
 
         if (!data.error) {
